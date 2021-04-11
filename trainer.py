@@ -88,11 +88,11 @@ def train(model: GraphSAC,
 def train_value(model: GraphSAC,
           batch: GraphBatch):
     q_tar = model.compute_q_target(batch.adj_mat, batch.next_state, Config.gamma, batch.reward, batch.done)
-    q_val = model.q(batch.adj_mat, torch.cat([batch.state, batch.action], 2)).squeeze()
-    q_loss = 0.5 * (q_tar - q_val).pow(2).mean()
+    # q_val = model.q(batch.adj_mat, torch.cat([batch.state, batch.action], 2)).squeeze()
+    # q_loss = 0.5 * (q_tar - q_val).pow(2).mean()
     # v_tar = model.compute_v_target(batch.adj_mat, batch.state)
-    # q1_val, q2_val = model.q_function(batch.adj_mat, batch.state, batch.action)
-    # q_loss = 0.5 * (q_tar - q1_val).pow(2).mean() + 0.5 * (q_tar - q2_val).pow(2).mean()
+    q1_val, q2_val = model.q_function(batch.adj_mat, batch.state, batch.action)
+    q_loss = 0.5 * (q_tar - q1_val).pow(2).mean() + 0.5 * (q_tar - q2_val).pow(2).mean()
     # print("q_tar", q_tar.shape)
     # print("q1_val", q1_val.shape)
     # q_loss = F.smooth_l1_loss(q_val, q_tar)

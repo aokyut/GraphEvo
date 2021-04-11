@@ -1,9 +1,0 @@
-{
-    "python.pythonPath": "/Users/aokiyuuta/anaconda3/envs/torch_env/bin/python",
-    "python.linting.mypyArgs": [
-        "--ignore-missing-imports",
-        "--follow-imports=silent",
-        "--show-column-numbers",
-        "--strict"
-    ]
-}

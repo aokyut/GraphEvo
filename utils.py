@@ -69,11 +69,10 @@ class Writer:
             return
         dir_check(self.save_dir)
         torch.save(model.policy, os.path.join(self.save_dir, "policy.pth"))
-        # torch.save(model.q1, os.path.join(self.save_dir, "q_function_1.pth"))
-        # torch.save(model.q2, os.path.join(self.save_dir, "q_function_2.pth"))
-        # torch.save(model.v_tar, os.path.join(self.save_dir, "value.pth"))
-        torch.save(model.q_tar, os.path.join(self.save_dir, "q_tar.pth"))
-        torch.save(model.q, os.path.join(self.save_dir, "q.pth"))
+        torch.save(model.q1, os.path.join(self.save_dir, "q_function_1.pth"))
+        torch.save(model.q2, os.path.join(self.save_dir, "q_function_2.pth"))
+        torch.save(model.q1_tar, os.path.join(self.save_dir, "q1_tar.pth"))
+        torch.save(model.q2_tar, os.path.join(self.save_dir, "q2_tar.pth"))
         torch.onnx.export(
             model=model.policy,
             args=(dummy_input1, dummy_input2),
@@ -118,8 +117,8 @@ class Writer:
         model.policy.load_state_dict(torch.load(os.path.join(self.save_dir, "policy.pth")))
         model.q1.load_state_dict(torch.load(os.path.join(self.save_dir, "q_function_1.pth")))
         model.q2.load_state_dict(torch.load(os.path.join(self.save_dir, "q_function_2.pth")))
-        model.v_tar.load_state_dict(torch.load(os.path.join(self.save_dir, "value.pthe")))
-        model.v.load_state_dict(model.v_tar.state_dict())
+        model.q1_tar.load_state_dict(torch.load(os.path.join(self.save_dir, "q1_tar.pthe")))
+        model.q2_tar.load_state_dict(torch.load(os.path.join(self.save_dir, "q2_tar.pthe")))
 
         with open(os.path.join(self.save_dir, "resume.json"), "r") as f:
             json_dic = json.load(f)
