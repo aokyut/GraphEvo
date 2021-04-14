@@ -5,7 +5,7 @@ from agent import GraphBatch
 from config import Config
 from typing import List
 import torch.optim as optim
-import torch
+# import torch
 # import torch.nn.functional as F
 
 
@@ -19,21 +19,21 @@ def train(model: GraphSAC,
     v_loss = 0
     q_loss = 0
 
-    with torch.autograd.detect_anomaly():
-        for batch in batches:
-            l, q, v = train_value(model, batch)
-            v_loss = v + v_loss
-            q_loss = q + q_loss
-            if value_loss is None:
-                value_loss = l
-            else:
-                value_loss = l + value_loss
-        value_loss = value_loss / Config.bundle_size
-        v_loss /= Config.bundle_size
-        q_loss /= Config.bundle_size
-        value_optim.zero_grad()
-        value_loss.backward()
-        value_optim.step()
+    # with torch.autograd.detect_anomaly():
+    for batch in batches:
+        l, q, v = train_value(model, batch)
+        v_loss = v + v_loss
+        q_loss = q + q_loss
+        if value_loss is None:
+            value_loss = l
+        else:
+            value_loss = l + value_loss
+    value_loss = value_loss / Config.bundle_size
+    v_loss /= Config.bundle_size
+    q_loss /= Config.bundle_size
+    value_optim.zero_grad()
+    value_loss.backward()
+    value_optim.step()
 
     policy_loss = None
     q_mean = 0
@@ -88,23 +88,14 @@ def train(model: GraphSAC,
 def train_value(model: GraphSAC,
           batch: GraphBatch):
     q_tar = model.compute_q_target(batch.adj_mat, batch.next_state, Config.gamma, batch.reward, batch.done)
-    # q_val = model.q(batch.adj_mat, torch.cat([batch.state, batch.action], 2)).squeeze()
-    # q_loss = 0.5 * (q_tar - q_val).pow(2).mean()
-    # v_tar = model.compute_v_target(batch.adj_mat, batch.state)
-    q1_val, q2_val = model.q_function(batch.adj_mat, batch.state, batch.action)
-    q_loss = 0.5 * (q_tar - q1_val).pow(2).mean() + 0.5 * (q_tar - q2_val).pow(2).mean()
-    # print("q_tar", q_tar.shape)
-    # print("q1_val", q1_val.shape)
-    # q_loss = F.smooth_l1_loss(q_val, q_tar)
 
-    # v_val = model.v(batch.adj_mat, batch.state).squeeze()
-    # v_loss = 0.5 * (v_tar - v_val).pow(2).mean()
-    # v_loss = F.smooth_l1_loss(v_val, v_tar)
+    q1_val, q2_val = model.q_value(batch.adj_mat, batch.state, batch.action)
+
+    q_loss = 0.5 * (q_tar - q1_val).pow(2).mean() + 0.5 * (q_tar - q2_val).pow(2).mean()
 
     value_loss = q_loss
 
     return value_loss, q_loss.item(), 0
-    # return value_loss, q_loss.item(), v_loss.item()
 
 
 def train_policy(model: GraphSAC,

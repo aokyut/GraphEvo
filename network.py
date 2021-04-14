@@ -11,7 +11,7 @@ CONST_GAUSSIAN = math.log(math.pi * 2)
 
 
 class GraphLinear(nn.Module):
-    def __init__(self, in_size, out_size, activate=True):
+    def __init__(self, in_size, out_size, activate=None):
         super().__init__()
         self.linear_in = nn.Linear(
             in_features=in_size,
@@ -35,10 +35,10 @@ class GraphLinear(nn.Module):
         # グラフの自己ノードの畳み込み
         l_self = self.linear_loop(state)
 
-        if self.activate:
-            return F.leaky_relu(l_rel_in + l_rel_out + l_self)
-        else:
+        if self.activate is None:
             return l_rel_in + l_rel_out + l_self
+        else:
+            return self.activate(l_rel_in + l_rel_out + l_self)
 
 
 class GraphGaussianPolicy(nn.Module):
@@ -49,61 +49,54 @@ class GraphGaussianPolicy(nn.Module):
         super().__init__()
 
         layers = [
-            GraphLinear(in_size, hidden_layers[0])
+            GraphLinear(in_size, hidden_layers[0], nn.LeakyReLU())
         ]
 
         for i in range(1, len(hidden_layers)):
             layers.append(
-                GraphLinear(hidden_layers[i - 1], hidden_layers[i])
+                GraphLinear(hidden_layers[i - 1], hidden_layers[i], nn.LeakyReLU())
             )
 
+        layers.append(GraphLinear(hidden_layers[-1], out_size))
         self.pre_network = nn.ModuleList(layers)
-        self.mu = GraphLinear(hidden_layers[-1], out_size, activate=False)
-        self.log_sig = GraphLinear(hidden_layers[-1], out_size, activate=False)
 
     def forward(self, adj_mat, x):
         # adj_mat = adj_mat.squeeze()
         # x = x.squeeze()
         for layer in self.pre_network:
             x = layer(adj_mat, x)
-        # print(x.shape)
-        mu = self.mu(adj_mat, x)
-        log_sig = torch.tanh(self.log_sig(adj_mat, x))
-        log_sig = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_sig + 1)
 
-        return torch.tanh(mu + torch.randn_like(mu) * log_sig.exp())
+        action_probs = F.softmax(x.tanh(), dim=-1)
+        shape = torch.Size(action_probs.shape)
+        actions = torch.multinomial(action_probs.reshape(-1, shape[-1]), 1, True).reshape(shape[:-1])
+
+        return actions.float() - 1
 
     def pi_and_log_prob_pi(self, adj_mat, x):
+
         for layer in self.pre_network:
             x = layer(adj_mat, x)
-        mu = self.mu(adj_mat, x)
-        log_sig = torch.tanh(self.log_sig(adj_mat, x))
-        log_sig = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_sig + 1)
-        pi = torch.tanh(mu + torch.randn_like(mu) * log_sig.exp())
-        # compute prob pi
-        # print("pi", pi.shape)
-        # print(mu.shape)
-        # print(log_sig.shape)
-        # print("mu", mu)
-        # print("log_sig", log_sig)
 
-        log_prob_pi = torch.sum(-0.5 * (((pi - torch.tanh(mu)) / (log_sig.exp() + EPS))**2 + 2 * log_sig + CONST_GAUSSIAN), 2)
-        log_prob_pi = log_prob_pi - torch.log((1 - pi ** 2) + EPS).sum(2)
-        # print("log_prob_pi", log_prob_pi)
-        # print("pi", pi)
-        return pi, log_prob_pi
+        action_probs = F.softmax(x.tanh(), dim=-1)
+
+        z = (action_probs == 0.0).float() * 1e-8
+        log_action_probs = torch.log(action_probs + z)
+
+        return action_probs, log_action_probs
 
 
-class GraphValueFunction(nn.Module):
-    def __init__(self, in_size, hidden_layers=Config.hidden_layers):
+class GraphQNetwork(nn.Module):
+    def __init__(self, in_size=Config.network_in_size,
+                       out_size=Config.network_out_size,
+                       hidden_layers=Config.hidden_layers):
         super().__init__()
-        layers = [GraphLinear(in_size, hidden_layers[0])]
+        layers = [GraphLinear(in_size, hidden_layers[0], nn.LeakyReLU())]
         for i in range(1, len(hidden_layers)):
             layers.append(
                 GraphLinear(hidden_layers[i - 1], hidden_layers[i])
             )
-            # layers.append(nn.LeakyReLU())
-        layers.append(GraphLinear(hidden_layers[-1], 1, activate=False))
+        layers.append(GraphLinear(hidden_layers[-1], out_size))
+
         self.network = nn.ModuleList(layers)
 
     def forward(self, adj_mat, x):
@@ -122,17 +115,13 @@ class GraphSAC(nn.Module):
         #     Config.network_in_size + Config.network_out_size
         # )
 
-        self.q1 = GraphValueFunction(
-            Config.network_in_size + Config.network_out_size
+        self.q1 = GraphQNetwork(
         )
-        self.q2 = GraphValueFunction(
-            Config.network_in_size + Config.network_out_size
+        self.q2 = GraphQNetwork(
         )
-        self.q1_tar = GraphValueFunction(
-            Config.network_in_size + Config.network_out_size
+        self.q1_tar = GraphQNetwork(
         )
-        self.q2_tar = GraphValueFunction(
-            Config.network_in_size + Config.network_out_size
+        self.q2_tar = GraphQNetwork(
         )
 
         # self.q_tar = GraphValueFunction(
@@ -166,34 +155,36 @@ class GraphSAC(nn.Module):
     #     return (q - self.call_alpha() * log_prob_pi.squeeze()).detach()
 
     def compute_q_target(self, adj_mat, state, gamma, reward, done):
-        # v_value = self.v_tar(adj_mat, state).squeeze()
-        # done = done.squeeze(-1)
-        # print("v_value", v_value.shape)
-        # print("done", done.shape)
-        # return (reward.squeeze(-1) + gamma * done.squeeze(-1) * self.v_tar(adj_mat, state).squeeze()).detach()
-        pi, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
-        # q_value = self.q_tar(adj_mat, torch.cat([state, pi], 2)).squeeze()
-        target_q1, target_q2 = self.q_function(adj_mat, state, pi)
-        # print("pi", pi.shape)
-        # print("log_prob_pi", log_prob_pi.shape)
-        # print("q_value", q_value.shape)
-        value = torch.min(target_q1, target_q2) - self.call_alpha() * log_prob_pi
+        action_probs, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
+        target_q1, target_q2 = self.q_function(adj_mat, state)
+
+        value = (action_probs * (torch.min(target_q1, target_q2) - self.call_alpha() * log_prob_pi)).sum(dim=2)
         return (reward.squeeze(-1) + gamma * done.squeeze(-1) * value.squeeze()).detach()
 
-    def q_function(self, adj_mat, state, pi):
-        q1, q2 = self.q1(adj_mat, torch.cat([state, pi], 2)), self.q2(adj_mat, torch.cat([state, pi], 2))
+    def q_function(self, adj_mat, state):
+        q1, q2 = self.q1(adj_mat, state), self.q2(adj_mat, state)
+        return q1.squeeze(), q2.squeeze()
+
+    def q_value(self, adj_mat, state, action):
+        q1, q2 = self.q1(adj_mat, state), self.q2(adj_mat, state)
+        index = (action + 1).round().long()
+        q1 = torch.gather(q1, dim=2, index=index)
+        q2 = torch.gather(q2, dim=2, index=index)
         return q1.squeeze(), q2.squeeze()
 
     def q_function_entropy(self, adj_mat, state):
-        pi, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
+        action_probs, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
         # q_value = self.q_tar(adj_mat, torch.cat([state, pi], 2)).squeeze()
-        target_q1, target_q2 = self.q_function(adj_mat, state, pi)
-        H = -log_prob_pi
-        return torch.min(target_q1, target_q2), H.squeeze()
+        target_q1, target_q2 = self.q_function(adj_mat, state)
+
+        H = - torch.sum(action_probs * log_prob_pi, dim=2)
+
+        return torch.sum(torch.min(target_q1, target_q2) * action_probs, dim=-1), H.squeeze()
 
     def compute_alpha_target(self, adj_mat, state):
-        _, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
-        return self.call_alpha() * (- log_prob_pi - Config.target_entropy)
+        action_probs, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
+        entropy = - torch.sum(action_probs * log_prob_pi, dim=2)
+        return self.call_alpha() * (entropy - Config.target_entropy)
 
     def call_alpha(self):
         return torch.exp(self.alpha)

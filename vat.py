@@ -12,8 +12,8 @@ from utils import Writer
 import logging
 from tqdm import tqdm
 
-random.seed(1)
-torch.manual_seed(1)
+random.seed(2)
+torch.manual_seed(2)
 
 # ロガーの取得
 werkzeug_logger = logging.getLogger("werkzeug")
