@@ -54,6 +54,7 @@ class GraphDataset():
         self.log_reward = log_reward
         self.size = Config.dataset_eps_size
         self.index = 0
+        self.step_width = Config.dataset_eps_size // 2
 
     def __len__(self):
         return len(self.memory)
@@ -73,6 +74,17 @@ class GraphDataset():
             self.index = (self.index + 1) % self.size
             if (self.index % Config.learn_freq) == 0:
                 self.train_func(self.get_batchs())
+
+    def _push(self, data: GraphFeatureData, num: int):
+        learn = False
+        for i in range(num):
+            self.memory[self.index] = data
+            if (self.index + 1 == self.size):
+                self.step_width = (self.step_width + 1) // 2
+            self.index = (self.index + 1) % self.size
+            learn |= self.index % Config.learn_freq == 0
+        if (learn):
+            self.train_func(self.get_batchs())
 
 
 class Agent:

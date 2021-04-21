@@ -92,6 +92,7 @@ def train_value(model: GraphSAC,
     q1_val, q2_val = model.q_value(batch.adj_mat, batch.state, batch.action)
 
     q_loss = 0.5 * (q_tar - q1_val).pow(2).mean() + 0.5 * (q_tar - q2_val).pow(2).mean()
+    # q_loss = F.smooth_l1_loss(q_tar, q1_val).mean() + F.smooth_l1_loss(q_tar, q2_val).mean()
 
     value_loss = q_loss
 

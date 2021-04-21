@@ -11,62 +11,64 @@ CONST_GAUSSIAN = math.log(math.pi * 2)
 
 
 class GraphLinear(nn.Module):
-    def __init__(self, in_size, out_size, activate=None):
+    def __init__(self, in_size, out_size, activate=None, in_global_size=0, out_global_size=Config.global_size):
         super().__init__()
-        self.linear_in = nn.Linear(
-            in_features=in_size,
-            out_features=out_size
-        )
-        self.linear_out = nn.Linear(
-            in_features=in_size,
-            out_features=out_size
-        )
-        self.linear_loop = nn.Linear(
-            in_features=in_size,
-            out_features=out_size
-        )
         self.activate = activate
+        self.use_global = False if in_global_size == 0 else True
+        self.global_size = in_global_size
+        self.linear = nn.Linear(in_size * 3 + in_global_size, out_size)
+        self.u_linear = nn.Linear(in_size * 3 + in_global_size, out_global_size)
 
-    def forward(self, adj_mat, state):
-        # グラフの順方向への畳み込み
-        l_rel_in = self.linear_in(torch.matmul(adj_mat, state))
-        # グラフの逆方向への畳み込み
-        l_rel_out = self.linear_out(torch.matmul(torch.transpose(adj_mat, -2, -1), state))
-        # グラフの自己ノードの畳み込み
-        l_self = self.linear_loop(state)
+    def forward(self, adj_mat, state, u=None):
+        x_in = []
+        # print(self.global_size)
+        if self.use_global:
+            shape = list(state.shape)  # (B, N, F)
+            shape[-1] = u.shape[-1]  # (B, N, U)
+            x_in.append(u.unsqueeze(-2).expand(shape))
+        x_in.append(torch.matmul(self._preprocess_adj(adj_mat), state))
+        x_in.append(torch.matmul(self._preprocess_adj(torch.transpose(adj_mat, -2, -1)), state))
+        x_in.append(state)
+
+        l_in = torch.cat(x_in, dim=-1)
+        vertex_feature = self.linear(l_in)
+        global_feature = self.u_linear(torch.mean(l_in, dim=-2))
 
         if self.activate is None:
-            return l_rel_in + l_rel_out + l_self
+            return vertex_feature, global_feature
         else:
-            return self.activate(l_rel_in + l_rel_out + l_self)
+            return self.activate(vertex_feature), self.activate(global_feature)
+
+    def _preprocess_adj(self, adj):
+        return F.normalize(adj, p=1, dim=-1)
 
 
 class GraphGaussianPolicy(nn.Module):
     def __init__(self,
             in_size=Config.network_in_size,
-            out_size=Config.network_out_size,
-            hidden_layers=Config.hidden_layers):
+            out_size=Config.network_out_size):
         super().__init__()
 
         layers = [
-            GraphLinear(in_size, hidden_layers[0], nn.LeakyReLU())
+            GraphLinear(in_size=in_size, out_size=64, activate=nn.LeakyReLU()),
+            GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=16, out_size=3, in_global_size=Config.global_size)
         ]
 
-        for i in range(1, len(hidden_layers)):
-            layers.append(
-                GraphLinear(hidden_layers[i - 1], hidden_layers[i], nn.LeakyReLU())
-            )
-
-        layers.append(GraphLinear(hidden_layers[-1], out_size))
         self.pre_network = nn.ModuleList(layers)
 
     def forward(self, adj_mat, x):
         # adj_mat = adj_mat.squeeze()
         # x = x.squeeze()
+        u = None
         for layer in self.pre_network:
-            x = layer(adj_mat, x)
+            if isinstance(layer, GraphLinear):
+                x, u = layer(adj_mat, x, u)
+            else:
+                x = layer(x)
 
-        action_probs = F.softmax(x.tanh(), dim=-1)
+        action_probs = F.softmax(2 * x.tanh(), dim=-1)
         shape = torch.Size(action_probs.shape)
         actions = torch.multinomial(action_probs.reshape(-1, shape[-1]), 1, True).reshape(shape[:-1])
 
@@ -74,14 +76,17 @@ class GraphGaussianPolicy(nn.Module):
 
     def pi_and_log_prob_pi(self, adj_mat, x):
 
+        u = None
         for layer in self.pre_network:
-            x = layer(adj_mat, x)
+            if isinstance(layer, GraphLinear):
+                x, u = layer(adj_mat, x, u)
+            else:
+                x = layer(x)
 
-        action_probs = F.softmax(x.tanh(), dim=-1)
+        action_probs = F.softmax(2 * x.tanh(), dim=-1)
 
         z = (action_probs == 0.0).float() * 1e-8
         log_action_probs = torch.log(action_probs + z)
-
         return action_probs, log_action_probs
 
 
@@ -90,18 +95,22 @@ class GraphQNetwork(nn.Module):
                        out_size=Config.network_out_size,
                        hidden_layers=Config.hidden_layers):
         super().__init__()
-        layers = [GraphLinear(in_size, hidden_layers[0], nn.LeakyReLU())]
-        for i in range(1, len(hidden_layers)):
-            layers.append(
-                GraphLinear(hidden_layers[i - 1], hidden_layers[i])
-            )
-        layers.append(GraphLinear(hidden_layers[-1], out_size))
+        layers = [
+            GraphLinear(in_size=in_size, out_size=64, activate=nn.LeakyReLU()),
+            GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=16, out_size=3, in_global_size=Config.global_size)
+        ]
 
         self.network = nn.ModuleList(layers)
 
     def forward(self, adj_mat, x):
+        u = None
         for layer in self.network:
-            x = layer(adj_mat, x)
+            if isinstance(layer, GraphLinear):
+                x, u = layer(adj_mat, x, u)
+            else:
+                x = layer(x)
         return x
 
 
@@ -110,11 +119,6 @@ class GraphSAC(nn.Module):
                  out_size=Config.network_out_size):
         super().__init__()
         self.policy = GraphGaussianPolicy()
-
-        # self.q = GraphValueFunction(
-        #     Config.network_in_size + Config.network_out_size
-        # )
-
         self.q1 = GraphQNetwork(
         )
         self.q2 = GraphQNetwork(
@@ -124,16 +128,10 @@ class GraphSAC(nn.Module):
         self.q2_tar = GraphQNetwork(
         )
 
-        # self.q_tar = GraphValueFunction(
-        #     Config.network_in_size + Config.network_out_size
-        # )
-
         self.copy_param()
         self.alpha = torch.autograd.Variable(torch.tensor(Config.alpha), requires_grad=True)
 
     def copy_param(self):
-        # self.v_tar.load_state_dict(self.v.state_dict())
-        # self.q_tar.load_state_dict(self.q.state_dict())
         self.q1_tar.load_state_dict(self.q1.state_dict())
         self.q2_tar.load_state_dict(self.q2.state_dict())
 
@@ -141,18 +139,10 @@ class GraphSAC(nn.Module):
         return self.policy(adj_mat, x)
 
     def update_target(self, rho):
-        # for v_p, v_tar_p in zip(self.v.parameters(), self.v_tar.parameters()):
-        #     v_tar_p.data = rho * v_tar_p.data + (1 - rho) * v_p.data
         for q_p, q_tar_p in zip(self.q1.parameters(), self.q1_tar.parameters()):
             q_tar_p.data = rho * q_tar_p.data + (1 - rho) * q_p.data
         for q_p, q_tar_p in zip(self.q2.parameters(), self.q2_tar.parameters()):
             q_tar_p.data = rho * q_tar_p.data + (1 - rho) * q_p.data
-
-    # def compute_v_target(self, adj_mat, state):
-    #     pi, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
-    #     q1, q2 = self.q1(adj_mat, torch.cat([state, pi], dim=2)), self.q2(adj_mat, torch.cat([state, pi], dim=2))
-    #     q = torch.min(q1, q2).squeeze()
-    #     return (q - self.call_alpha() * log_prob_pi.squeeze()).detach()
 
     def compute_q_target(self, adj_mat, state, gamma, reward, done):
         action_probs, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
@@ -174,7 +164,6 @@ class GraphSAC(nn.Module):
 
     def q_function_entropy(self, adj_mat, state):
         action_probs, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
-        # q_value = self.q_tar(adj_mat, torch.cat([state, pi], 2)).squeeze()
         target_q1, target_q2 = self.q_function(adj_mat, state)
 
         H = - torch.sum(action_probs * log_prob_pi, dim=2)
@@ -183,8 +172,8 @@ class GraphSAC(nn.Module):
 
     def compute_alpha_target(self, adj_mat, state):
         action_probs, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
-        entropy = - torch.sum(action_probs * log_prob_pi, dim=2)
+        entropy = - torch.sum(action_probs * log_prob_pi, dim=-1)
         return self.call_alpha() * (entropy - Config.target_entropy)
 
     def call_alpha(self):
-        return torch.exp(self.alpha)
+        return torch.exp(self.alpha).clamp(0.01, 0.5)

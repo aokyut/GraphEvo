@@ -25,8 +25,8 @@ class Writer:
         self.log_path = os.path.join(self.log_dir, self.log_name)
         self.log_freq = Config.log_freq
         self.save_freq = Config.save_freq
+        self.log_pod = log_pod()
 
-        print(f"-> log path : {self.log_path}")
         if Config.load is True:
             print(f"-> resume use {self.save_dir}")
 
@@ -35,6 +35,7 @@ class Writer:
                     json_dic = json.load(f)
                     self.step = json_dic["step"]
                     self.rstep = json_dic["rstep"]
+                    self.log_path = json_dic["log_path"]
             else:
                 print(f"-> directory {self.save_dir} not exists.")
 
@@ -46,17 +47,20 @@ class Writer:
             if os.path.exists(self.log_path):
                 shutil.rmtree(self.log_path)
             self.writer = SummaryWriter(log_dir=self.log_path)
+        print(f"-> log path : {self.log_path}")
 
     def log_train(self, tag, value):
+        self.log_pod.push(tag, value)
         if self.step % self.log_freq != 0:
             return
-        self.writer.add_scalar(tag, value, self.step)
+        self.writer.add_scalar(tag, self.log_pod.get(tag), self.step)
 
     def log_reward(self, value):
         self.rstep += 1
+        self.log_pod.push("acum_reward", value)
         if self.rstep % self.log_freq != 0:
             return
-        self.writer.add_scalar("acum_reward", value, self.rstep)
+        self.writer.add_scalar("acum_reward", self.log_pod.get("acum_reward"), self.rstep)
 
     def add_train_step(self):
         self.step += 1
@@ -96,7 +100,8 @@ class Writer:
 
         json_dic = {
             "step": self.step,
-            "rstep": self.rstep
+            "rstep": self.rstep,
+            "log_path": self.log_path
         }
         # 学習再開用のファイル
         with open(os.path.join(self.save_dir, "resume.json"), "w") as f:
@@ -135,3 +140,19 @@ def dir_check(dir):
         print(f"-> {dir} not exists")
         os.makedirs(dir)
         print(f"-> make {dir}")
+
+
+class log_pod:
+    def __init__(self):
+        self.dict = {}
+
+    def push(self, tag, value):
+        if tag in self.dict:
+            self.dict[tag].append(value)
+        else:
+            self.dict[tag] = [value]
+
+    def get(self, tag):
+        value = sum(self.dict[tag]) / len(self.dict[tag])
+        self.dict[tag] = []
+        return value
