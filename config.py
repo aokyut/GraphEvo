@@ -26,7 +26,7 @@ class Config:
     alpha = -1.0  # エントロピーの考慮具合
     target_entropy = 0.5
     rho = 0.995   # ターゲットネットワークのパラメータの移動平均の重み
-    dataset_eps_size = 100  # 保存されるエピソードの数
+    dataset_eps_size = 10000  # 保存されるエピソードの数
     learn_freq = 1  # エピソードがこの回数pushされたら学習を行う
     batch_size = 64
     bundle_size = 4

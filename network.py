@@ -176,4 +176,5 @@ class GraphSAC(nn.Module):
         return self.call_alpha() * (entropy - Config.target_entropy)
 
     def call_alpha(self):
-        return torch.exp(self.alpha).clamp(0.01, 0.5)
+        # return torch.exp(self.alpha).clamp(0.01, 0.5)
+        return 0.245 * torch.sin(self.alpha) + 0.255
