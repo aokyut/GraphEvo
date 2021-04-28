@@ -5,7 +5,7 @@ from typing import Dict, Any
 import torch
 import torch.optim as optim
 import random
-from network import GraphSAC
+from network import GraphQ
 from trainer import train
 from config import Config
 from utils import Writer
@@ -24,15 +24,13 @@ app = Flask(__name__)
 
 agents: Dict[int, Agent] = {}
 
-model = GraphSAC()
-value_optim = optim.Adam([
+model = GraphQ()
+value_optim = optim.RMSprop([
     # {"params": model.q.parameters()}
     {"params": model.q1.parameters()},
     {"params": model.q2.parameters()}
     # {"params": model.v.parameters()}
 ], Config.lr)
-policy_optim = optim.Adam(model.policy.parameters(), Config.lr)
-alpha_optim = optim.Adam([model.alpha], Config.alpha_update)
 
 writer = Writer()
 
@@ -40,8 +38,8 @@ writer.save(model)
 
 
 def train_func(batches):
-    policy_loss, value_loss = train(model, batches, writer, value_optim, policy_optim, alpha_optim)
-    tqdm.write(f"[{writer.step} step]policy_loss:{policy_loss:.5g}, value_loss:{value_loss:.5g}")
+    value_loss = train(model, batches, writer, value_optim)
+    tqdm.write(f"[{writer.step}] value_loss:{value_loss:.5g}")
 
 
 dataset = GraphDataset(train_func=train_func,
@@ -55,11 +53,6 @@ def hello_check() -> str:
         out_text += "id :" + str(key) + "\n" + str(value)
 
     return out_text
-
-
-# @app.route("/", methods=["POST"])
-# def init_academy():
-#     return "hoge"
 
 
 @app.route("/new", methods=["POST"])

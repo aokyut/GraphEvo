@@ -2,7 +2,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from config import Config
 import json
-from network import GraphSAC
+from network import GraphQ
 import os
 import shutil
 from flask import make_response
@@ -68,17 +68,16 @@ class Writer:
     def add_reward_step(self):
         self.rstep += 1
 
-    def save(self, model: GraphSAC):
+    def save(self, model: GraphQ):
         if (self.step % self.save_freq != 0):
             return
         dir_check(self.save_dir)
-        torch.save(model.policy, os.path.join(self.save_dir, "policy.pth"))
         torch.save(model.q1, os.path.join(self.save_dir, "q_function_1.pth"))
         torch.save(model.q2, os.path.join(self.save_dir, "q_function_2.pth"))
         torch.save(model.q1_tar, os.path.join(self.save_dir, "q1_tar.pth"))
         torch.save(model.q2_tar, os.path.join(self.save_dir, "q2_tar.pth"))
         torch.onnx.export(
-            model=model.policy,
+            model=model.q1_tar,
             args=(dummy_input1, dummy_input2),
             f=os.path.join(self.save_dir, "policy.onnx"),
             input_names=["adj", "state"],
@@ -118,7 +117,7 @@ class Writer:
         response.headers['Content-Disposition'] = 'attachment; filename=policy.onnx'
         return response
 
-    def load(self, model: GraphSAC):
+    def load(self, model: GraphQ):
         model.policy.load_state_dict(torch.load(os.path.join(self.save_dir, "policy.pth")))
         model.q1.load_state_dict(torch.load(os.path.join(self.save_dir, "q_function_1.pth")))
         model.q2.load_state_dict(torch.load(os.path.join(self.save_dir, "q_function_2.pth")))
