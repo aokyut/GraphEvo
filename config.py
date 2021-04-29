@@ -9,6 +9,7 @@ class Config:
     network_out_size = action_num
     dropout_p = 0.1
 
+    # Utillパラメータ
     log_dir = "tensorboard"
     log_freq = 5  # ログの出力頻度
     save_dir = "checkpoint"
@@ -18,16 +19,19 @@ class Config:
 
     load = False
 
-    dir_name = "test2"  # それぞれのディレクトリで保存される名前
+    dir_name = "r2d2-test"  # それぞれのディレクトリで保存される名前
 
-    lr = 0.0005  # 学習率
-    alpha_update = 0.01  # alphaの更新速度
+    # 学習パラメータ
+    lr = 0.0005                 # 学習率
+    alpha_update = 0.01         # alphaの更新速度
+    n_step = 4                  # multi-step learningの考慮ステップ数 最小は1
+    n_burn_in = 10              # burn-inを行う期間
     gamma = 0.99
-    alpha = -1.0  # エントロピーの考慮具合
+    alpha = 0.0                # エントロピーの考慮具合
     target_entropy = 0.5
-    rho = 0.995   # ターゲットネットワークのパラメータの移動平均の重み
-    dataset_eps_size = 10000  # 保存されるエピソードの数
-    learn_freq = 1  # エピソードがこの回数pushされたら学習を行う
+    rho = 0.995                 # ターゲットネットワークのパラメータの移動平均の重み
+    dataset_eps_size = 10000    # 保存されるエピソードの数
+    learn_freq = 1              # エピソードがこの回数pushされたら学習を行う
     batch_size = 64
     bundle_size = 4
 

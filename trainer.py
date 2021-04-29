@@ -71,10 +71,10 @@ def train(model: GraphSAC,
     model.update_target(Config.rho)
 
     writer.log_train("loss/q_function_loss", q_loss)
-    writer.log_train("loss/v_function_loss", v_loss)
+    # writer.log_train("loss/v_function_loss", v_loss)
     writer.log_train("loss/q_value_mean", q_mean)
     writer.log_train("loss/H_mean", H_mean)
-    writer.log_train("loss/value_loss", value_loss.item())
+    # writer.log_train("loss/value_loss", value_loss.item())
     writer.log_train("loss/policy_loss", policy_loss.item())
     writer.log_train("loss/alpha_loss", alpha_loss.item())
     writer.log_train("loss/alpha", model.call_alpha())

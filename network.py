@@ -145,6 +145,10 @@ class GraphSAC(nn.Module):
             q_tar_p.data = rho * q_tar_p.data + (1 - rho) * q_p.data
 
     def compute_q_target(self, adj_mat, state, gamma, reward, done):
+        """
+        reward: n-step target value [B, 1, 1]
+        state: n-step future state [B, N, state-size]
+        """
         action_probs, log_prob_pi = self.policy.pi_and_log_prob_pi(adj_mat, state)
         target_q1, target_q2 = self.q_function(adj_mat, state)
 
@@ -178,3 +182,10 @@ class GraphSAC(nn.Module):
     def call_alpha(self):
         # return torch.exp(self.alpha).clamp(0.01, 0.5)
         return 0.245 * torch.sin(self.alpha) + 0.255
+
+    def rescaling(self, x, epsilon=EPS):
+        n = math.sqrt(abs(x) + 1) - 1
+        return torch.sign(x) * n + epsilon * x
+
+    def rescaling_inverse(x):
+        return torch.sign(x) * ((x + torch.sign(x)) ** 2 - 1)
