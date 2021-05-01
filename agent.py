@@ -4,6 +4,7 @@ from typing import List, NamedTuple, Optional
 import random
 from config import Config
 import queue
+import numpy as np
 
 
 class Transition(NamedTuple):
@@ -15,34 +16,63 @@ class Transition(NamedTuple):
 
 
 class GraphBatch(NamedTuple):
-    adj_mat: torch.Tensor  # [batch_size, node_size, node_size]
-    # node_feature: torch.Tensor  # [batch_size, node_size, feature_size]
-    state: torch.Tensor  # [batch_size, node_size, state_size + feature_size]
-    action: torch.Tensor  # [batch_size, node_size, action_size]
-    next_state: torch.Tensor  # [batch_size, node_size, state_size]
-    reward: torch.Tensor  # [batch_size, 1, 1]
-    done: torch.Tensor  # [batch_size, 1, 1] 0 or 1
+    adj_mat: torch.Tensor       # [batch_size, seq_size, node_size, node_size]
+    state: torch.Tensor         # [batch_size, seq_size, node_size, state_size]
+    bi_state: torch.Tensor      # [batch_size, burn_in_size, node_size, state_size]
+    bi_adj: torch               # [batch_size, burn_in_size, node_size, node_size]
+    action: torch.Tensor        # [batch_size, seq_size, node_size, action_size]
+    next_state: torch.Tensor    # [batch_size, seq_size, node_size, state_size]
+    reward: torch.Tensor        # [batch_size, seq_size, 1, 1]
+    done: torch.Tensor          # [batch_size, seq_size, 1, 1] 0 or 1
 
 
 class GraphFeatureData(NamedTuple):
+    """
+    一つのエピソードを保存するクラス
+    グラフの隣接行列と１エピソード分のTransitionを保持し
+    sampleでバッチを出力するクラス。
+    """
     adj_mat: torch.Tensor
     transitions: List[Transition]
 
     def __len__(self):
         return len(self.transitions)
 
+    def ok(self):
+        return int(self.__len__() > (Config.burn_in + Config.seq_in))
+
     def sample(self, batch_size: int):
         repeat_size = min(batch_size, self.__len__())
+        transitions_list = []
+        for i in range(Config.batch_size):
+            start_index = random.randint(0, self.__len__() - Config.pick_out_range)
+            transitions_burn_in = Transition(*zip(*self.transitions[start_index: start_index + Config.burn_in]))
+            transitions_seq_in = Transition(*zip(*self.transitions[start_index + Config.burn_in: start_index + Config.pick_out_range]))
+            transitions_list.append(
+                GraphBatch(
+                    adj_mat=self.adj_mat.repeat(self.Config.seq_in, 1, 1).unsqueeze(),
+                    state=torch.cat(transitions_seq_in.state).unsqueeze(),
+                    bi_adj=self.adj_mat.repeat(self.Config.burn_in, 1, 1).unsqueeze(),
+                    bi_state=torch.cat(transitions_burn_in.state).unsqueeze(),
+                    action=torch.cat(transitions_seq_in.action).unsqueeze(),
+                    next_state=torch.cat(transitions_seq_in.next_state).unsqueeze(),
+                    reward=torch.cat(transitions_seq_in.reward).unsqueeze(),
+                    done=torch.cat(transitions_seq_in.done).unsqueeze()
+                )
+            )
         transitions_list = random.sample(self.transitions, repeat_size)
-        transitions_batch = Transition(*zip(*transitions_list))
+        transitions_batch = GraphBatch(*zip(*transitions_list))
         return GraphBatch(
-            adj_mat=self.adj_mat.repeat(repeat_size, 1, 1),
+            adj_mat=torch.cat(transitions_batch.adj_mat),
             state=torch.cat(transitions_batch.state),
-            action=torch.cat(transitions_batch.action),
+            bi_adj=torch.cat(transitions_batch.bi_adj),
+            bi_state=torch.cat(transitions_batch.bi_state),
             next_state=torch.cat(transitions_batch.next_state),
+            action=torch.cat(transitions_batch.action),
             reward=torch.cat(transitions_batch.reward),
-            done=torch.cat(transitions_batch.done)
+            done=torch.cat(transitions_batch.done),
         )
+        # shape[B, S, N, F]
 
 
 class GraphDataset():
@@ -64,7 +94,10 @@ class GraphDataset():
         return [self.sample(self.batch_size) for i in range(self.bundle_size)]
 
     def sample(self, batch_size: int):  # type: ignore
-        return random.choice(self.memory).sample(batch_size)
+        # サイズが足りないシークエンスを選ばないようにする。
+        choice_flag = np.array([f_data.ok() for f_data in self.memory])
+        p_dist = choice_flag / choice_flag.sum()
+        return np.random.choice(self.memory, p=p_dist)
 
     def push(self, data: GraphFeatureData):
         if len(self.memory) < self.size:
