@@ -23,8 +23,8 @@ class GraphLinear(nn.Module):
         x_in = []
         # print(self.global_size)
         if self.use_global:
-            shape = list(state.shape)  # (B, N, F)
-            shape[-1] = u.shape[-1]  # (B, N, U)
+            shape = list(state.shape)  # (B, S, N, F)
+            shape[-1] = u.shape[-1]  # (B, S, N, U)
             x_in.append(u.unsqueeze(-2).expand(shape))
         x_in.append(torch.matmul(self._preprocess_adj(adj_mat), state))
         x_in.append(torch.matmul(self._preprocess_adj(torch.transpose(adj_mat, -2, -1)), state))
@@ -43,7 +43,51 @@ class GraphLinear(nn.Module):
         return F.normalize(adj, p=1, dim=-1)
 
 
-class GraphGaussianPolicy(nn.Module):
+class GraphLSTM(nn.Module):
+    def __init__(self, in_size, out_size, activate=None, in_global_size=0, out_global_size=Config.global_size):
+        super().__init__()
+        self.activate = activate
+        self.use_global = False if in_global_size == 0 else True
+        self.out_global_size = out_global_size
+        self.out_size = out_size
+        self.u_lstm = nn.LSTM(in_size * 3 + in_global_size, out_global_size)
+        self.lstm = nn.LSTM(in_size * 3 + in_global_size,
+                            out_size + out_global_size)
+
+    def forward(self, adj_mat, state, h, c, u=None):
+        # local_featureとglobal_featureで一度catし入力した後splitして出力する。
+        x_in = []
+
+        shape = list(state.shape)  # (B, S, N, F)
+        if self.use_global:
+            shape[-1] = u.shape[-1]  # (B, S, N, U)
+            x_in.append(u.unsqueeze(-2).expand(shape))
+        x_in.append(torch.matmul(self._preprocess_adj(adj_mat), state))
+        x_in.append(torch.matmul(self._preprocess_adj(torch.transpose(adj_mat, -2, -1)), state))
+        x_in.append(state)
+        if len(shape) == 2:
+            l_in = torch.cat(x_in, dim=-1)
+            features, (h_out, c_out) = self.lstm(l_in.unsqueeze(), (h, c))
+            vertex_feature, global_feature = torch.split(features.squeeze(), [self.out_size, self.out_global_size], dim=-1)
+            # vertex_feature: [N, F] , global_feature: [N, G]
+        else:
+            l_in = torch.cat(x_in, dim=-1)
+            l_in = torch.cat(l_in.split(1, dim=0), dim=2).squeeze()
+            features, (h_out, c_out) = self.lstm(l_in) if (h is None) else self.lstm(l_in, (h, c))
+            features = torch.cat(features.unsqueeze().split(shape[-2], dim=-2), dim=0)
+            # feature: [B, S, N, F + G]
+            vertex_feature, global_feature = torch.splitt(features, [self.out_size, self.out_global_size], dim=-1)
+
+        if self.activate is None:
+            return vertex_feature, global_feature, h_out, c_out
+        else:
+            return self.activate(vertex_feature), self.activate(global_feature), h_out, c_out
+
+    def _preprocess_adj(self, adj):
+        return F.normalize(adj, p=1, dim=-1)
+
+
+class GraphPolicy(nn.Module):
     def __init__(self,
             in_size=Config.network_in_size,
             out_size=Config.network_out_size):
@@ -52,18 +96,20 @@ class GraphGaussianPolicy(nn.Module):
         layers = [
             GraphLinear(in_size=in_size, out_size=64, activate=nn.LeakyReLU()),
             GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
-            GraphLinear(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
-            GraphLinear(in_size=16, out_size=3, in_global_size=Config.global_size)
+            GraphLSTM(in_size=32, out_size=Config.lstm_h_size, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=Config.lstm_h_size, out_size=3, in_global_size=Config.global_size)
         ]
 
         self.pre_network = nn.ModuleList(layers)
 
-    def forward(self, adj_mat, x):
+    def forward(self, adj_mat, x, h=None, c=None):
         # adj_mat = adj_mat.squeeze()
         # x = x.squeeze()
         u = None
         for layer in self.pre_network:
-            if isinstance(layer, GraphLinear):
+            if isinstance(layer, GraphLSTM):
+                x, u, h, c = layer(adj_mat, x, h, c, u)
+            elif isinstance(layer, GraphLinear):
                 x, u = layer(adj_mat, x, u)
             else:
                 x = layer(x)
@@ -72,13 +118,15 @@ class GraphGaussianPolicy(nn.Module):
         shape = torch.Size(action_probs.shape)
         actions = torch.multinomial(action_probs.reshape(-1, shape[-1]), 1, True).reshape(shape[:-1])
 
-        return actions.float() - 1
+        return actions.float() - 1, h, c
 
-    def pi_and_log_prob_pi(self, adj_mat, x):
+    def pi_and_log_prob_pi(self, adj_mat, x, h=None, c=None):
 
         u = None
         for layer in self.pre_network:
-            if isinstance(layer, GraphLinear):
+            if isinstance(layer, GraphLSTM):
+                x, u, h, c = layer(adj_mat, x, h, c, u)
+            elif isinstance(layer, GraphLinear):
                 x, u = layer(adj_mat, x, u)
             else:
                 x = layer(x)
@@ -98,27 +146,29 @@ class GraphQNetwork(nn.Module):
         layers = [
             GraphLinear(in_size=in_size, out_size=64, activate=nn.LeakyReLU()),
             GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
-            GraphLinear(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
-            GraphLinear(in_size=16, out_size=3, in_global_size=Config.global_size)
+            GraphLSTM(in_size=32, out_size=Config.lstm_h_size, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=Config.lstm_h_size, out_size=3, in_global_size=Config.global_size)
         ]
 
         self.network = nn.ModuleList(layers)
 
-    def forward(self, adj_mat, x):
+    def forward(self, adj_mat, x, h=None, c=None):
         u = None
         for layer in self.network:
-            if isinstance(layer, GraphLinear):
+            if isinstance(layer, GraphLSTM):
+                x, u, h, c = layer(adj_mat, x, h, c, u)
+            elif isinstance(layer, GraphLinear):
                 x, u = layer(adj_mat, x, u)
             else:
                 x = layer(x)
-        return x
+        return x, h, c
 
 
 class GraphSAC(nn.Module):
     def __init__(self, in_size=Config.network_in_size,
                  out_size=Config.network_out_size):
         super().__init__()
-        self.policy = GraphGaussianPolicy()
+        self.policy = GraphPolicy()
         self.q1 = GraphQNetwork(
         )
         self.q2 = GraphQNetwork(
