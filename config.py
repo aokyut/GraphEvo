@@ -30,6 +30,8 @@ class Config:
     burn_in = 16                # burn-inを行う期間
     seq_in = 16                 # burn-inの後に入力する期間
     pick_out_range = burn_in + seq_in
+    rnn = True
+    lstm_h_size = 16
 
     # sacパラメータ
     alpha_update = 0.01         # alphaの更新速度
