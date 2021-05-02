@@ -10,6 +10,8 @@ import numpy as np
 class Transition(NamedTuple):
     state: torch.Tensor  # [1, node_size, state_size]
     action: Optional[torch.Tensor]  # [1, node_size, action_size]
+    h_state: torch.Tensor
+    c_state: torch.Tensor
     next_state: torch.Tensor  # [1, node_size, state_size]
     reward: torch.Tensor  # [1, 1, 1]
     done: torch.Tensor  # [1, 1, 1]
@@ -20,6 +22,8 @@ class GraphBatch(NamedTuple):
     state: torch.Tensor         # [batch_size, seq_size, node_size, state_size]
     bi_state: torch.Tensor      # [batch_size, burn_in_size, node_size, state_size]
     bi_adj: torch               # [batch_size, burn_in_size, node_size, node_size]
+    h_state: torch.Tensor
+    c_staet: torch.Tensor
     action: torch.Tensor        # [batch_size, seq_size, node_size, action_size]
     next_state: torch.Tensor    # [batch_size, seq_size, node_size, state_size]
     reward: torch.Tensor        # [batch_size, seq_size, 1, 1]
@@ -54,6 +58,8 @@ class GraphFeatureData(NamedTuple):
                     state=torch.cat(transitions_seq_in.state).unsqueeze(),
                     bi_adj=self.adj_mat.repeat(self.Config.burn_in, 1, 1).unsqueeze(),
                     bi_state=torch.cat(transitions_burn_in.state).unsqueeze(),
+                    h_state=transitions_seq_in.h_state[0],
+                    c_state=transitions_seq_in.c_state[0],
                     action=torch.cat(transitions_seq_in.action).unsqueeze(),
                     next_state=torch.cat(transitions_seq_in.next_state).unsqueeze(),
                     reward=torch.cat(transitions_seq_in.reward).unsqueeze(),
@@ -67,6 +73,8 @@ class GraphFeatureData(NamedTuple):
             state=torch.cat(transitions_batch.state),
             bi_adj=torch.cat(transitions_batch.bi_adj),
             bi_state=torch.cat(transitions_batch.bi_state),
+            h_state=torch.cat(transitions_batch.h_state, dim=-2),
+            c_state=torch.cat(transitions_batch.c_state, dim=-2),
             next_state=torch.cat(transitions_batch.next_state),
             action=torch.cat(transitions_batch.action),
             reward=torch.cat(transitions_batch.reward),
@@ -133,6 +141,8 @@ class Agent:
         self.dataset = dataset
         self.state_queue = queue.Queue()
         self.action_queue = queue.Queue()
+        self.h_queue = queue.Queue()
+        self.c_queue = queue.Queue()
         self.reward_queue = []
         self.multi_step_reward = 0
         self.gamma = Config.gamma
@@ -147,6 +157,8 @@ class Agent:
     def reset(self):
         self.state_queue = queue.Queue()
         self.action_queue = queue.Queue()
+        self.h_queue = queue.Queue()
+        self.c_queue = queue.Queue()
         self.reward_queue = []
         self.memory: List[Transition] = []
         self.acum_reward = 0
@@ -154,6 +166,8 @@ class Agent:
 
     def push_data(self, state: torch.Tensor,  # [node_size, state_size]
                         action: torch.Tensor,  # [node_size, acion_size]
+                        h: torch.Tensor,
+                        c: torch.Tensor,
                         reward: float,
                         done: bool):
         self.acum_reward += reward
@@ -161,6 +175,8 @@ class Agent:
         if self.state_queue.qsize() < self.n_step:
             self.state_queue.put(state)
             self.action_queue.put(action)
+            self.h_queue.put(h)
+            self.c_queue.put(c)
             self.reward_queue.append(reward)
             self.multi_step_reward = self.gamma * self.multi_step_reward + reward
             return
@@ -171,19 +187,23 @@ class Agent:
 
         if done is False:
             self.memory.append(Transition(
-                self.state_queue.get().reshape(1, -1, Config.state_size),
-                self.action_queue.get().reshape(1, -1, Config.action_size),
-                state.reshape(1, -1, Config.state_size),
-                torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
-                torch.Tensor([1]).reshape(1, 1, 1)
+                state=self.state_queue.get().reshape(1, self.node_size, -1),
+                action=self.action_queue.get().reshape(1, self.node_size, -1),
+                h_state=self.h_queue.get().reshape(1, self.node_size, -1),
+                c_state=self.c_queue.get().reshape(1, self.node_size, -1),
+                next_state=state.reshape(1, self.node_size, -1),
+                reward=torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
+                done=torch.Tensor([1]).reshape(1, 1, 1)
             ))
         else:
             self.memory.append(Transition(
-                self.state_queue.get().reshape(1, -1, Config.state_size),
-                self.action_queue.get().reshape(1, -1, Config.action_size),
-                state.reshape(1, -1, Config.state_size),
-                torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
-                torch.Tensor([0]).reshape(1, 1, 1)
+                state=self.state_queue.get().reshape(1, -1, Config.state_size),
+                action=self.action_queue.get().reshape(1, -1, Config.action_size),
+                h_state=self.h_queue.get().reshape(1, self.node_size, -1),
+                c_state=self.c_queue.get().reshape(1, self.node_size, -1),
+                next_state=state.reshape(1, -1, Config.state_size),
+                reward=torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
+                done=torch.Tensor([0]).reshape(1, 1, 1)
             ))
 
         if done is True:
@@ -192,6 +212,8 @@ class Agent:
 
         self.state_queue.put(state)
         self.action_queue.put(action)
+        self.h_queue.put(h)
+        self.c_queue.put(c)
 
     def episode_end(self):
         set_data: GraphFeatureData = GraphFeatureData(adj_mat=self.adj_mat,
