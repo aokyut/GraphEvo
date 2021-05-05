@@ -11,8 +11,8 @@ import datetime
 
 dummy_input1 = torch.randn(size=(3, 3))
 dummy_input2 = torch.randn(size=(3, Config.network_in_size))
-dummy_input3 = torch.randn(size=(3, Config.lstm_h_size))
-dummy_input4 = torch.randn(size=(3, Config.lstm_h_size))
+dummy_input3 = torch.randn(size=(1, 3, Config.lstm_h_size))
+dummy_input4 = torch.randn(size=(1, 3, Config.lstm_h_size))
 
 
 class Writer:
@@ -83,7 +83,7 @@ class Writer:
             model=model.policy,
             args=(dummy_input1, dummy_input2, dummy_input3, dummy_input4),
             f=os.path.join(self.save_dir, "policy.onnx"),
-            input_names=["adj", "state", "h", "c"],
+            input_names=["adj", "state", "h0", "c0"],
             output_names=["action", "h", "c"],
             verbose=False,
             dynamic_axes={
@@ -94,11 +94,11 @@ class Writer:
                 'state': {
                     0: 'node_size'
                 },
-                'h': {
-                    0: 'node_size'
+                'h0': {
+                    1: 'node_size'
                 },
-                'c': {
-                    0: 'node_size'
+                'c0': {
+                    1: 'node_size'
                 },
                 'action': {
                     0: 'node_size'

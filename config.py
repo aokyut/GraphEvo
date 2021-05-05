@@ -19,8 +19,10 @@ class Config:
 
     load = False
 
-    dir_name = "r2d2-test"  # それぞれのディレクトリで保存される名前
+    dir_name = "test"  # それぞれのディレクトリで保存される名前
 
+    # graph network
+    global_size = 16
     # 強化学習パラメータ
     gamma = 0.99
     # 学習パラメータ
@@ -29,19 +31,17 @@ class Config:
     n_step = 4                  # multi-step learningの考慮ステップ数 最小は1
     burn_in = 16                # burn-inを行う期間
     seq_in = 16                 # burn-inの後に入力する期間
-    pick_out_range = burn_in + seq_in
+    pick_out_range = burn_in + seq_in + n_step
     rnn = True
-    lstm_h_size = 16
+    lstm_out_size = 16
+    lstm_h_size = lstm_out_size + global_size
 
     # sacパラメータ
-    alpha_update = 0.01         # alphaの更新速度
+    alpha_update = 0.001         # alphaの更新速度
     alpha = 0.0                 # 初期エントロピーの考慮具合
     target_entropy = 0.5
     rho = 0.995                 # ターゲットネットワークのパラメータの移動平均の重み
     dataset_eps_size = 10000    # 保存されるエピソードの数
     learn_freq = 1              # エピソードがこの回数pushされたら学習を行う
-    batch_size = 64             # 一つのエピソードから取り出すバッチのサイズ
+    batch_size = 1             # 一つのエピソードから取り出すバッチのサイズ
     bundle_size = 4             # 一回の学習で取り出すエピソードの数
-
-    # graph network
-    global_size = 16

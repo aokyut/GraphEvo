@@ -4,7 +4,7 @@ from typing import List, NamedTuple, Optional
 import random
 from config import Config
 import queue
-import numpy as np
+# import numpy as np
 
 
 class Transition(NamedTuple):
@@ -12,7 +12,6 @@ class Transition(NamedTuple):
     action: Optional[torch.Tensor]  # [1, node_size, action_size]
     h_state: torch.Tensor
     c_state: torch.Tensor
-    next_state: torch.Tensor  # [1, node_size, state_size]
     reward: torch.Tensor  # [1, 1, 1]
     done: torch.Tensor  # [1, 1, 1]
 
@@ -21,11 +20,10 @@ class GraphBatch(NamedTuple):
     adj_mat: torch.Tensor       # [batch_size, seq_size, node_size, node_size]
     state: torch.Tensor         # [batch_size, seq_size, node_size, state_size]
     bi_state: torch.Tensor      # [batch_size, burn_in_size, node_size, state_size]
-    bi_adj: torch               # [batch_size, burn_in_size, node_size, node_size]
+    bi_adj: torch.Tensor             # [batch_size, burn_in_size, node_size, node_size]
     h_state: torch.Tensor
-    c_staet: torch.Tensor
+    c_state: torch.Tensor
     action: torch.Tensor        # [batch_size, seq_size, node_size, action_size]
-    next_state: torch.Tensor    # [batch_size, seq_size, node_size, state_size]
     reward: torch.Tensor        # [batch_size, seq_size, 1, 1]
     done: torch.Tensor          # [batch_size, seq_size, 1, 1] 0 or 1
 
@@ -46,7 +44,6 @@ class GraphFeatureData(NamedTuple):
         return int(self.__len__() > (Config.burn_in + Config.seq_in))
 
     def sample(self, batch_size: int):
-        repeat_size = min(batch_size, self.__len__())
         transitions_list = []
         for i in range(Config.batch_size):
             start_index = random.randint(0, self.__len__() - Config.pick_out_range)
@@ -54,19 +51,17 @@ class GraphFeatureData(NamedTuple):
             transitions_seq_in = Transition(*zip(*self.transitions[start_index + Config.burn_in: start_index + Config.pick_out_range]))
             transitions_list.append(
                 GraphBatch(
-                    adj_mat=self.adj_mat.repeat(self.Config.seq_in, 1, 1).unsqueeze(),
-                    state=torch.cat(transitions_seq_in.state).unsqueeze(),
-                    bi_adj=self.adj_mat.repeat(self.Config.burn_in, 1, 1).unsqueeze(),
-                    bi_state=torch.cat(transitions_burn_in.state).unsqueeze(),
-                    h_state=transitions_seq_in.h_state[0],
-                    c_state=transitions_seq_in.c_state[0],
-                    action=torch.cat(transitions_seq_in.action).unsqueeze(),
-                    next_state=torch.cat(transitions_seq_in.next_state).unsqueeze(),
-                    reward=torch.cat(transitions_seq_in.reward).unsqueeze(),
-                    done=torch.cat(transitions_seq_in.done).unsqueeze()
+                    adj_mat=self.adj_mat.repeat(Config.seq_in + Config.n_step, 1, 1).unsqueeze(0),
+                    state=torch.cat(transitions_seq_in.state).unsqueeze(0),
+                    bi_adj=self.adj_mat.repeat(Config.burn_in, 1, 1).unsqueeze(0),
+                    bi_state=torch.cat(transitions_burn_in.state).unsqueeze(0),
+                    h_state=transitions_burn_in.h_state[0],
+                    c_state=transitions_burn_in.c_state[0],
+                    action=torch.cat(transitions_seq_in.action[:-Config.n_step]).unsqueeze(0),
+                    reward=torch.cat(transitions_seq_in.reward[:-Config.n_step]).unsqueeze(0),
+                    done=torch.cat(transitions_seq_in.done[:-Config.n_step]).unsqueeze(0)
                 )
             )
-        transitions_list = random.sample(self.transitions, repeat_size)
         transitions_batch = GraphBatch(*zip(*transitions_list))
         return GraphBatch(
             adj_mat=torch.cat(transitions_batch.adj_mat),
@@ -75,7 +70,6 @@ class GraphFeatureData(NamedTuple):
             bi_state=torch.cat(transitions_batch.bi_state),
             h_state=torch.cat(transitions_batch.h_state, dim=-2),
             c_state=torch.cat(transitions_batch.c_state, dim=-2),
-            next_state=torch.cat(transitions_batch.next_state),
             action=torch.cat(transitions_batch.action),
             reward=torch.cat(transitions_batch.reward),
             done=torch.cat(transitions_batch.done),
@@ -103,9 +97,10 @@ class GraphDataset():
 
     def sample(self, batch_size: int):  # type: ignore
         # サイズが足りないシークエンスを選ばないようにする。
-        choice_flag = np.array([f_data.ok() for f_data in self.memory])
-        p_dist = choice_flag / choice_flag.sum()
-        return np.random.choice(self.memory, p=p_dist)
+        # choice_flag = np.array([f_data.ok() for f_data in self.memory])
+        # p_dist = choice_flag / choice_flag.sum()
+        # print(p_dist)
+        return random.choice(self.memory).sample(batch_size)
 
     def push(self, data: GraphFeatureData):
         if len(self.memory) < self.size:
@@ -191,7 +186,6 @@ class Agent:
                 action=self.action_queue.get().reshape(1, self.node_size, -1),
                 h_state=self.h_queue.get().reshape(1, self.node_size, -1),
                 c_state=self.c_queue.get().reshape(1, self.node_size, -1),
-                next_state=state.reshape(1, self.node_size, -1),
                 reward=torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
                 done=torch.Tensor([1]).reshape(1, 1, 1)
             ))
@@ -201,12 +195,20 @@ class Agent:
                 action=self.action_queue.get().reshape(1, -1, Config.action_size),
                 h_state=self.h_queue.get().reshape(1, self.node_size, -1),
                 c_state=self.c_queue.get().reshape(1, self.node_size, -1),
-                next_state=state.reshape(1, -1, Config.state_size),
                 reward=torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
                 done=torch.Tensor([0]).reshape(1, 1, 1)
             ))
 
         if done is True:
+            for i in range(Config.n_step):
+                self.memory.append(Transition(
+                    state=self.state_queue.get().reshape(1, -1, Config.state_size),
+                    action=self.action_queue.get().reshape(1, -1, Config.action_size),
+                    h_state=self.h_queue.get().reshape(1, self.node_size, -1),
+                    c_state=self.c_queue.get().reshape(1, self.node_size, -1),
+                    reward=torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
+                    done=torch.Tensor([0]).reshape(1, 1, 1)
+                ))
             self.episode_end()
             return
 

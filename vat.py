@@ -87,8 +87,8 @@ def push_data(id):
     agent.push_data(
         state=torch.Tensor(req_data["State"]).reshape(agent.node_size, -1),
         action=torch.Tensor(req_data["Action"]).reshape(agent.node_size, -1),
-        h=torch.Tensor(req_data["HState"].reshape(agent.node_size, -1)),
-        c=torch.Tensor(req_data["CState"].reshape(agent.node_size, -1)),
+        h=torch.Tensor(req_data["HState"]).reshape(agent.node_size, -1),
+        c=torch.Tensor(req_data["CState"]).reshape(agent.node_size, -1),
         reward=req_data["Reward"],
         done=req_data["Done"]
     )
