@@ -99,9 +99,10 @@ class GraphPolicy(nn.Module):
         super().__init__()
 
         layers = [
-            GraphLinear(in_size=in_size, out_size=32, activate=nn.LeakyReLU()),
-            GraphLSTM(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
-            GraphLinear(in_size=16, out_size=3, in_global_size=Config.global_size)
+            GraphLinear(in_size=in_size, out_size=64, activate=nn.LeakyReLU()),
+            GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLSTM(in_size=16, out_size=3, in_global_size=Config.global_size)
         ]
 
         self.pre_network = nn.ModuleList(layers)
@@ -148,9 +149,10 @@ class GraphQNetwork(nn.Module):
                        hidden_layers=Config.hidden_layers):
         super().__init__()
         layers = [
-            GraphLinear(in_size=in_size, out_size=32, activate=nn.LeakyReLU()),
-            GraphLSTM(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
-            GraphLinear(in_size=16, out_size=3, in_global_size=Config.global_size)
+            GraphLinear(in_size=in_size, out_size=64, activate=nn.LeakyReLU()),
+            GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLSTM(in_size=16, out_size=3, in_global_size=Config.global_size)
         ]
 
         self.network = nn.ModuleList(layers)

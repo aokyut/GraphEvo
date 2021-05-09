@@ -33,15 +33,15 @@ class Config:
     seq_in = 16                 # burn-inの後に入力する期間
     pick_out_range = burn_in + seq_in + n_step
     rnn = True
-    lstm_out_size = 16
+    lstm_out_size = 3
     lstm_h_size = lstm_out_size + global_size
 
     # sacパラメータ
-    alpha_update = 0.001         # alphaの更新速度
+    alpha_update = 0.005         # alphaの更新速度
     alpha = 0.0                 # 初期エントロピーの考慮具合
     target_entropy = 0.5
     rho = 0.995                 # ターゲットネットワークのパラメータの移動平均の重み
     dataset_eps_size = 10000    # 保存されるエピソードの数
     learn_freq = 1              # エピソードがこの回数pushされたら学習を行う
     batch_size = 1             # 一つのエピソードから取り出すバッチのサイズ
-    bundle_size = 4             # 一回の学習で取り出すエピソードの数
+    bundle_size = 16             # 一回の学習で取り出すエピソードの数
