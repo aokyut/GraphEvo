@@ -11,6 +11,10 @@ from config import Config
 from utils import Writer
 import logging
 from tqdm import tqdm
+from queue import Queue
+from threading import Thread
+import time
+
 
 random.seed(2)
 torch.manual_seed(2)
@@ -37,15 +41,33 @@ alpha_optim = optim.Adam([model.alpha], Config.alpha_update)
 writer = Writer()
 
 writer.save(model)
+train_q = Queue()
+
+
+def train_worker(q):
+    while True:
+        batches = q.get()
+        time.sleep(1)
+        if writer.step < Config.iter_num:
+            policy_loss, value_loss = train(model, batches, writer, value_optim, policy_optim, alpha_optim)
+            tqdm.write(f"[{writer.step} step] policy_loss:{policy_loss:.5g},  value_loss:{value_loss:.5g}")
+        else:
+            print("End Learn")
+            # ログを何もしない関数に書き換える
+            break
 
 
 def train_func(batches):
-    policy_loss, value_loss = train(model, batches, writer, value_optim, policy_optim, alpha_optim)
-    tqdm.write(f"[{writer.step} step]policy_loss:{policy_loss:.5g}, value_loss:{value_loss:.5g}")
+    train_q.put(batches)
 
 
 dataset = GraphDataset(train_func=train_func,
                        log_reward=writer.log_reward)
+
+# trainスレッドの作成、常駐化
+thread = Thread(target=train_worker, args=(train_q,))
+thread.setDaemon(True)
+thread.start()
 
 
 @app.route("/", methods=["GET"])

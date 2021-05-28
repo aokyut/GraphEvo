@@ -50,10 +50,12 @@ class GraphGaussianPolicy(nn.Module):
         super().__init__()
 
         layers = [
-            GraphLinear(in_size=in_size, out_size=64, activate=nn.LeakyReLU()),
-            GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            nn.Linear(in_size, 64),
+            nn.LeakyReLU(),
+            GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU()),
             GraphLinear(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
-            GraphLinear(in_size=16, out_size=3, in_global_size=Config.global_size)
+            GraphLinear(in_size=16, out_size=8, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=8, out_size=3, in_global_size=Config.global_size)
         ]
 
         self.pre_network = nn.ModuleList(layers)
@@ -96,10 +98,12 @@ class GraphQNetwork(nn.Module):
                        hidden_layers=Config.hidden_layers):
         super().__init__()
         layers = [
-            GraphLinear(in_size=in_size, out_size=64, activate=nn.LeakyReLU()),
-            GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            nn.Linear(in_size, 64),
+            nn.LeakyReLU(),
+            GraphLinear(in_size=64, out_size=32, activate=nn.LeakyReLU()),
             GraphLinear(in_size=32, out_size=16, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
-            GraphLinear(in_size=16, out_size=3, in_global_size=Config.global_size)
+            GraphLinear(in_size=16, out_size=8, activate=nn.LeakyReLU(), in_global_size=Config.global_size),
+            GraphLinear(in_size=8, out_size=3, in_global_size=Config.global_size)
         ]
 
         self.network = nn.ModuleList(layers)
@@ -177,4 +181,4 @@ class GraphSAC(nn.Module):
 
     def call_alpha(self):
         # return torch.exp(self.alpha).clamp(0.01, 0.5)
-        return 0.245 * torch.sin(self.alpha) + 0.255
+        return (1 + self.alpha / (torch.abs(self.alpha) + 1)) / 2

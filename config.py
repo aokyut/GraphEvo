@@ -20,10 +20,11 @@ class Config:
 
     dir_name = "test2"  # それぞれのディレクトリで保存される名前
 
+    iter_num = 50_000
     lr = 0.0005  # 学習率
     alpha_update = 0.01  # alphaの更新速度
     gamma = 0.99
-    alpha = -1.0  # エントロピーの考慮具合
+    alpha = 0.0  # エントロピーの考慮具合
     target_entropy = 0.5
     rho = 0.995   # ターゲットネットワークのパラメータの移動平均の重み
     dataset_eps_size = 10000  # 保存されるエピソードの数
@@ -32,4 +33,4 @@ class Config:
     bundle_size = 4
 
     # graph network
-    global_size = 16
+    global_size = 32

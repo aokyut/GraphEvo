@@ -58,7 +58,7 @@ class Writer:
     def log_reward(self, value):
         self.rstep += 1
         self.log_pod.push("acum_reward", value)
-        if self.rstep % self.log_freq != 0:
+        if self.rstep % self.log_freq != 0 or self.rstep > Config.iter_num:
             return
         self.writer.add_scalar("acum_reward", self.log_pod.get("acum_reward"), self.rstep)
 
