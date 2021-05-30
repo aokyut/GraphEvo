@@ -3,8 +3,6 @@ class Config:
     feature_size = 5
     action_size = 1
     action_num = 3
-    # hidden_layers = [256, 128, 64, 32]
-    hidden_layers = [128, 64, 16, 4]
     network_in_size = 16
     network_out_size = action_num
     dropout_p = 0.1
@@ -14,6 +12,7 @@ class Config:
     log_freq = 5  # ログの出力頻度
     save_dir = "checkpoint"
     save_freq = 1  # モデルの保存頻度
+    log_smoothing = 0.6  # ログのスムージング
 
     data_dir = "dataset"
 
@@ -26,15 +25,16 @@ class Config:
     # 強化学習パラメータ
     gamma = 0.99
     # 学習パラメータ
+    iter_num = 50_000
     lr = 0.0005                 # 学習率
     # r2d2パラメータ
     n_step = 4                  # multi-step learningの考慮ステップ数 最小は1
-    burn_in = 16                # burn-inを行う期間
-    seq_in = 16                 # burn-inの後に入力する期間
+    burn_in = 10                # burn-inを行う期間
+    seq_in = 10                 # burn-inの後に入力する期間
     pick_out_range = burn_in + seq_in + n_step
     rnn = True
     lstm_out_size = 3
-    lstm_h_size = lstm_out_size + global_size
+    lstm_h_size = 64
 
     # sacパラメータ
     alpha_update = 0.005         # alphaの更新速度

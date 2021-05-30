@@ -7,6 +7,7 @@ import os
 import shutil
 from flask import make_response
 import datetime
+import time
 
 
 dummy_input1 = torch.randn(size=(3, 3))
@@ -28,6 +29,8 @@ class Writer:
         self.log_freq = Config.log_freq
         self.save_freq = Config.save_freq
         self.log_pod = log_pod()
+
+        dir_check(self.save_dir)
 
         if Config.load is True:
             print(f"-> resume use {self.save_dir}")
@@ -60,7 +63,7 @@ class Writer:
     def log_reward(self, value):
         self.rstep += 1
         self.log_pod.push("acum_reward", value)
-        if self.rstep % self.log_freq != 0:
+        if self.rstep % self.log_freq != 0 or self.rstep > Config.iter_num:
             return
         self.writer.add_scalar("acum_reward", self.log_pod.get("acum_reward"), self.rstep)
 
@@ -73,7 +76,6 @@ class Writer:
     def save(self, model: GraphSAC):
         if (self.step % self.save_freq != 0):
             return
-        dir_check(self.save_dir)
         torch.save(model.policy, os.path.join(self.save_dir, "policy.pth"))
         torch.save(model.q1, os.path.join(self.save_dir, "q_function_1.pth"))
         torch.save(model.q2, os.path.join(self.save_dir, "q_function_2.pth"))
@@ -164,3 +166,15 @@ class log_pod:
         value = sum(self.dict[tag]) / len(self.dict[tag])
         self.dict[tag] = []
         return value
+
+
+class Timewatch:
+    def __init__(self, smoothing=0.6):
+        self.current = time.time()
+        self.s = smoothing
+        self.iter = 0
+
+    def call(self):
+        self.iter = (time.time() - self.current) * (1 - self.s) + self.iter * self.s
+        self.current = time.time()
+        return self.iter

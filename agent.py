@@ -100,7 +100,7 @@ class GraphDataset():
         # choice_flag = np.array([f_data.ok() for f_data in self.memory])
         # p_dist = choice_flag / choice_flag.sum()
         # print(p_dist)
-        return random.choice(self.memory).sample(batch_size)
+        return random.choice([i for i in self.memory if i.ok()]).sample(batch_size)
 
     def push(self, data: GraphFeatureData):
         if len(self.memory) < self.size:
