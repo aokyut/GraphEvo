@@ -43,7 +43,7 @@ class GraphLinear(nn.Module):
         return F.normalize(adj, p=1, dim=-1)
 
 
-class GraphGaussianPolicy(nn.Module):
+class GraphPolicy(nn.Module):
     def __init__(self,
             in_size=Config.network_in_size,
             out_size=Config.network_out_size):
@@ -122,7 +122,7 @@ class GraphSAC(nn.Module):
     def __init__(self, in_size=Config.network_in_size,
                  out_size=Config.network_out_size):
         super().__init__()
-        self.policy = GraphGaussianPolicy()
+        self.policy = GraphPolicy()
         self.q1 = GraphQNetwork(
         )
         self.q2 = GraphQNetwork(
