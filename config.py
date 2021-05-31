@@ -21,8 +21,8 @@ class Config:
     dir_name = "test-mtv"  # それぞれのディレクトリで保存される名前
 
     # 学習パラメータ
-    n_step = 4
-    iter_num = 50_000
+    n_step = 2
+    iter_num = 10_000
     lr = 0.0005  # 学習率
     alpha_update = 0.01  # alphaの更新速度
     gamma = 0.99
