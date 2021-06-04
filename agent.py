@@ -129,11 +129,11 @@ class Agent:
             self.state_queue.put(state)
             self.action_queue.put(action)
             self.reward_queue.append(reward)
-            self.multi_step_reward = self.gamma * self.multi_step_reward + reward
+            self.multi_step_reward = self.gamma ** (len(self.reward_queue) - 1) * reward
             return
 
         self.reward_queue.append(reward)
-        self.multi_step_reward = self.gamma * (self.multi_step_reward - self.gamma ** (self.n_step - 1) * self.reward_queue[0]) + reward
+        self.multi_step_reward = (self.multi_step_reward - self.reward_queue[0]) / self.gamma + reward * self.gamma ** (self.n_step - 1)
         self.reward_queue = self.reward_queue[-Config.n_step:]
 
         if done is False:
@@ -155,6 +155,8 @@ class Agent:
 
         if done is True:
             for i in range(Config.n_step):
+                self.multi_step_reward = (self.multi_step_reward - self.reward_queue[0]) / self.gamma
+                self.reward_queue = self.reward_queue[1:] if len(self.reward_queue) > 2 else self.reward_queue
                 self.memory.append(Transition(
                     state=self.state_queue.get().reshape(1, -1, Config.state_size),
                     action=self.action_queue.get().reshape(1, -1, Config.action_size),

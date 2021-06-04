@@ -13,6 +13,7 @@ class Config:
     log_freq = 5  # ログの出力頻度
     save_dir = "checkpoint"
     save_freq = 1  # モデルの保存頻度
+    log_smoothing = 0.8
 
     data_dir = "dataset"
 
@@ -22,7 +23,7 @@ class Config:
 
     # 学習パラメータ
     n_step = 2
-    iter_num = 10_000
+    iter_num = 50_000
     lr = 0.0005  # 学習率
     alpha_update = 0.01  # alphaの更新速度
     gamma = 0.99

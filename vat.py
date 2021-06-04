@@ -8,9 +8,8 @@ import random
 from network import GraphSAC
 from trainer import train
 from config import Config
-from utils import Writer
+from utils import Writer, Timewatch
 import logging
-from tqdm import tqdm
 from queue import Queue
 from threading import Thread
 import time
@@ -39,6 +38,7 @@ policy_optim = optim.Adam(model.policy.parameters(), Config.lr)
 alpha_optim = optim.Adam([model.alpha], Config.alpha_update)
 
 writer = Writer()
+watch = Timewatch(Config.log_smoothing)
 
 writer.save(model)
 train_q = Queue()
@@ -50,7 +50,7 @@ def train_worker(q):
         time.sleep(1)
         if writer.step < Config.iter_num:
             policy_loss, value_loss = train(model, batches, writer, value_optim, policy_optim, alpha_optim)
-            tqdm.write(f"[{writer.step} step] policy_loss:{policy_loss:.5g},  value_loss:{value_loss:.5g}")
+            print(f"\r [{writer.step} step : {watch.call():.2g}s/iter] policy_loss:{policy_loss:.5g},  value_loss:{value_loss:.5g}          ", end="")
         else:
             print("End Learn")
             # ログを何もしない関数に書き換える
