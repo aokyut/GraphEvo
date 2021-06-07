@@ -19,10 +19,8 @@ class Config:
 
     load = False
 
-    dir_name = "test-mtv"  # それぞれのディレクトリで保存される名前
+    dir_name = "test2"  # それぞれのディレクトリで保存される名前
 
-    # 学習パラメータ
-    n_step = 2
     iter_num = 50_000
     lr = 0.0005  # 学習率
     alpha_update = 0.01  # alphaの更新速度

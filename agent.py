@@ -3,7 +3,6 @@ import torch
 from typing import List, NamedTuple, Optional
 import random
 from config import Config
-import queue
 
 
 class Transition(NamedTuple):
@@ -98,12 +97,6 @@ class Agent:
         self.last_action = None
         self.acum_reward = 0
         self.dataset = dataset
-        self.state_queue = queue.Queue()
-        self.action_queue = queue.Queue()
-        self.reward_queue = []
-        self.multi_step_reward = 0
-        self.gamma = Config.gamma
-        self.n_step = Config.n_step
 
     def __str__(self) -> str:
         return "Adjacency Matrix\n" + str(self.adj_mat) + "\n" + \
@@ -112,63 +105,44 @@ class Agent:
             "Type Matrix\n" + self.type_mat
 
     def reset(self):
-        self.state_queue = queue.Queue()
-        self.action_queue = queue.Queue()
-        self.reward_queue = []
+        self.last_state = None
+        self.last_action = None
         self.memory: List[Transition] = []
         self.acum_reward = 0
-        self.multi_step_reward = 0
 
     def push_data(self, state: torch.Tensor,  # [node_size, state_size]
                         action: torch.Tensor,  # [node_size, acion_size]
                         reward: float,
                         done: bool):
         self.acum_reward += reward
-
-        if self.state_queue.qsize() < self.n_step:
-            self.state_queue.put(state)
-            self.action_queue.put(action)
-            self.reward_queue.append(reward)
-            self.multi_step_reward = self.gamma ** (len(self.reward_queue) - 1) * reward
+        if self.last_state is None:
+            self.last_state = state
+            self.last_action = action
             return
-
-        self.reward_queue.append(reward)
-        self.multi_step_reward = (self.multi_step_reward - self.reward_queue[0]) / self.gamma + reward * self.gamma ** (self.n_step - 1)
-        self.reward_queue = self.reward_queue[-Config.n_step:]
 
         if done is False:
             self.memory.append(Transition(
-                state=self.state_queue.get().reshape(1, self.node_size, -1),
-                action=self.action_queue.get().reshape(1, self.node_size, -1),
-                next_state=state.reshape(1, -1, Config.state_size),
-                reward=torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
-                done=torch.Tensor([1]).reshape(1, 1, 1)
+                self.last_state.reshape(1, -1, Config.state_size),
+                self.last_action.reshape(1, -1, Config.action_size),
+                state.reshape(1, -1, Config.state_size),
+                torch.Tensor([reward]).reshape(1, 1, 1),
+                torch.Tensor([1]).reshape(1, 1, 1)
             ))
         else:
             self.memory.append(Transition(
-                state=self.state_queue.get().reshape(1, -1, Config.state_size),
-                action=self.action_queue.get().reshape(1, -1, Config.action_size),
-                next_state=state.reshape(1, -1, Config.state_size),
-                reward=torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
-                done=torch.Tensor([0]).reshape(1, 1, 1)
+                self.last_state.reshape(1, -1, Config.state_size),
+                self.last_action.reshape(1, -1, Config.action_size),
+                state.reshape(1, -1, Config.state_size),
+                torch.Tensor([reward]).reshape(1, 1, 1),
+                torch.Tensor([0]).reshape(1, 1, 1)
             ))
 
         if done is True:
-            for i in range(Config.n_step):
-                self.multi_step_reward = (self.multi_step_reward - self.reward_queue[0]) / self.gamma
-                self.reward_queue = self.reward_queue[1:] if len(self.reward_queue) > 1 else self.reward_queue
-                self.memory.append(Transition(
-                    state=self.state_queue.get().reshape(1, -1, Config.state_size),
-                    action=self.action_queue.get().reshape(1, -1, Config.action_size),
-                    next_state=state.reshape(1, -1, Config.state_size),
-                    reward=torch.Tensor([self.multi_step_reward]).reshape(1, 1, 1),
-                    done=torch.Tensor([0]).reshape(1, 1, 1)
-                ))
             self.episode_end()
             return
 
-        self.state_queue.put(state)
-        self.action_queue.put(action)
+        self.last_state = state
+        self.last_action = action
 
     def episode_end(self):
         set_data: GraphFeatureData = GraphFeatureData(adj_mat=self.adj_mat,
