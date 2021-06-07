@@ -153,7 +153,7 @@ class GraphSAC(nn.Module):
         target_q1, target_q2 = self.q_function(adj_mat, state)
 
         value = (action_probs * (torch.min(target_q1, target_q2) - self.call_alpha() * log_prob_pi)).sum(dim=2)
-        return (reward.squeeze(-1) + gamma * done.squeeze(-1) * value.squeeze()).detach()
+        return (reward.squeeze(-1) + (gamma ** Config.n_step) * done.squeeze(-1) * value.squeeze()).detach()
 
     def q_function(self, adj_mat, state):
         q1, q2 = self.q1(adj_mat, state), self.q2(adj_mat, state)

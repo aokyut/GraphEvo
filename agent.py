@@ -156,7 +156,7 @@ class Agent:
         if done is True:
             for i in range(Config.n_step):
                 self.multi_step_reward = (self.multi_step_reward - self.reward_queue[0]) / self.gamma
-                self.reward_queue = self.reward_queue[1:] if len(self.reward_queue) > 2 else self.reward_queue
+                self.reward_queue = self.reward_queue[1:] if len(self.reward_queue) > 1 else self.reward_queue
                 self.memory.append(Transition(
                     state=self.state_queue.get().reshape(1, -1, Config.state_size),
                     action=self.action_queue.get().reshape(1, -1, Config.action_size),
