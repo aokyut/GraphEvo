@@ -43,6 +43,7 @@ class GraphLinear(nn.Module):
         return F.normalize(adj, p=1, dim=-1)
 
 
+# Agent
 class GraphPolicy(nn.Module):
     def __init__(self,
             in_size=Config.network_in_size,
@@ -189,3 +190,16 @@ class GraphSAC(nn.Module):
 
     def rescaling_inverse(self, x):
         return torch.sign(x) * ((x + torch.sign(x)) ** 2 - 1)
+
+
+# Builder
+"""
+input: tensor(n × n × f)
+output: tensor(n+1 × n+1 × f)
+"""
+class GraphBuilder:
+    def __init__(self, edge_size=Config.edge_feature_size):
+        pass
+
+    def forward(self, adj):
+        pass

@@ -3,8 +3,7 @@ class Config:
     feature_size = 5
     action_size = 1
     action_num = 3
-    # hidden_layers = [256, 128, 64, 32]
-    hidden_layers = [128, 64, 16, 4]
+    edge_feature_size = 2
     network_in_size = 16
     network_out_size = action_num
     dropout_p = 0.1
@@ -34,4 +33,4 @@ class Config:
     bundle_size = 4
 
     # graph network
-    global_size = 32
+    global_size = 16
