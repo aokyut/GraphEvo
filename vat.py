@@ -12,7 +12,6 @@ from utils import Writer, Timewatch
 import logging
 from queue import Queue
 from threading import Thread
-import time
 
 
 random.seed(2)
@@ -47,7 +46,6 @@ train_q = Queue()
 def train_worker(q):
     while True:
         batches = q.get()
-        time.sleep(1)
         if writer.step < Config.iter_num:
             policy_loss, value_loss = train(model, batches, writer, value_optim, policy_optim, alpha_optim)
             print(f"\r [{writer.step} step : {watch.call():.2g}s/iter] policy_loss:{policy_loss:.5g},  value_loss:{value_loss:.5g}          ", end="")
