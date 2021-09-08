@@ -70,7 +70,8 @@ class GraphPolicy(nn.Module):
             else:
                 x = layer(x)
 
-        action_probs = F.softmax(2 * x.tanh(), dim=-1)
+        z = torch.log(F.relu(x) + 1) + 1e-8
+        action_probs = z / torch.sum(z)
         shape = torch.Size(action_probs.shape)
         actions = torch.multinomial(action_probs.reshape(-1, shape[-1]), 1, True).reshape(shape[:-1])
 
@@ -85,7 +86,8 @@ class GraphPolicy(nn.Module):
             else:
                 x = layer(x)
 
-        action_probs = F.softmax(2 * x.tanh(), dim=-1)
+        z = torch.log(F.relu(x) + 1) + 1e-8
+        action_probs = z / torch.sum(z)
 
         z = (action_probs == 0.0).float() * 1e-8
         log_action_probs = torch.log(action_probs + z)
