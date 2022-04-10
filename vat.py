@@ -10,7 +10,7 @@ from trainer import train
 from config import Config
 from utils import Writer, Timewatch
 import logging
-from queue import Queue
+from collections import deque
 from threading import Thread
 
 
@@ -40,12 +40,14 @@ writer = Writer()
 watch = Timewatch(Config.log_smoothing)
 
 writer.save(model)
-train_q = Queue()
+train_q = deque([], maxlen=10)
 
 
 def train_worker(q):
     while True:
-        batches = q.get()
+        if len(q) == 0:
+            continue
+        batches = q.popleft()
         if writer.step < Config.iter_num:
             policy_loss, value_loss = train(model, batches, writer, value_optim, policy_optim, alpha_optim)
             print(f"\r [{writer.step} step : {watch.call():.2g}s/iter] policy_loss:{policy_loss:.5g},  value_loss:{value_loss:.5g}          ", end="")
@@ -56,7 +58,7 @@ def train_worker(q):
 
 
 def train_func(batches):
-    train_q.put(batches)
+    train_q.append(batches)
 
 
 dataset = GraphDataset(train_func=train_func,

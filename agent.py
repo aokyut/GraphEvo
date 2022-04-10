@@ -115,7 +115,7 @@ class Agent:
                         reward: float,
                         done: bool):
         self.acum_reward += reward
-        if self.last_state is None:
+        if self.last_state is None or self.last_action is None:
             self.last_state = state
             self.last_action = action
             return
